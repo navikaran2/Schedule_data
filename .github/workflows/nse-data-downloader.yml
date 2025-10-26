@@ -2,9 +2,9 @@ name: NSE Data Downloader
 
 on:
   schedule:
-    # Runs every Sunday at 1:00 PM IST (7:30 AM UTC)
-    # IST = UTC + 5:30, so 13:00 IST = 07:30 UTC
-    - cron: '30 7 * * 0'
+    # Runs every Sunday at 11:12 PM IST (5:42 PM UTC)
+    # IST = UTC + 5:30, so 23:12 IST = 17:42 UTC
+    - cron: '42 17 * * 0'
   workflow_dispatch: # Allows manual trigger
 
 permissions:
