@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, List
 
 # ========== SETTINGS ==========
-SYMBOLS_FILE = "symbols.csv"
+SYMBOLS_FILE = "EQUITY_L.csv"
 DAYS = 365
 MAX_WORKERS = 10
 RETRY_COUNT = 3
@@ -149,7 +149,7 @@ def main():
         symbol_col = next((c for c in symbols_df.columns if c.strip().lower() == "symbol"), None)
         
         if not symbol_col:
-            print("❌ symbols.csv must have a 'Symbol' column")
+            print("❌ EQUITY_L.csv must have a 'Symbol' column")
             return
         
         symbols = symbols_df[symbol_col].dropna().astype(str).str.strip().unique().tolist()
