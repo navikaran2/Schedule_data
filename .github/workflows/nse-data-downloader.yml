@@ -1,0 +1,41 @@
+name: NSE Data Downloader
+
+on:
+  schedule:
+    # Runs every Sunday at 1 PM IST (7:30 AM UTC)
+    - cron: '30 7 * * 0'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  download-and-save:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install pandas polars yfinance
+      
+      - name: Run NSE Downloader
+        run: |
+          python nse_downloader_action.py
+      
+      - name: Commit and push parquet file
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add *.parquet
+          git diff --staged --quiet || git commit -m "Update NSE data - $(date +'%Y-%m-%d')"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
