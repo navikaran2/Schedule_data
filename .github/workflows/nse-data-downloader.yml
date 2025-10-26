@@ -15,6 +15,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
       
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -24,7 +25,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install pandas polars yfinance
+          pip install -r requirements.txt
       
       - name: Run NSE Downloader
         run: |
@@ -34,8 +35,19 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add *.parquet
-          git diff --staged --quiet || git commit -m "Update NSE data - $(date +'%Y-%m-%d')"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+          # Check if parquet file exists
+          if ls nse_data_*.parquet 1> /dev/null 2>&1; then
+            git add nse_data_*.parquet
+            
+            # Only commit if there are changes
+            if git diff --staged --quiet; then
+              echo "No changes to commit"
+            else
+              git commit -m "Update NSE data - $(date +'%Y-%m-%d %H:%M:%S')"
+              git push
+            fi
+          else
+            echo "No parquet file found to commit"
+            exit 1
+          fi
