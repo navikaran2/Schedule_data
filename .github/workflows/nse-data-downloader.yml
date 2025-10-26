@@ -2,53 +2,35 @@ name: NSE Data Downloader
 
 on:
   schedule:
-    # Runs every Sunday at 1:00 PM IST (7:30 AM UTC)
-    # IST = UTC + 5:30, so 13:00 IST = 07:30 UTC
-    - cron: '30 7 * * 0'
-  workflow_dispatch: # Allows manual trigger
+    - cron: '40 17 * * 0'  # Every Sunday at 17:40 UTC → 11:10 PM IST
+  workflow_dispatch:       # Allows manual trigger from GitHub Actions tab
 
 jobs:
-  download-and-save:
+  download-data:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
-      
+          python-version: '3.x'
+
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-      
-      - name: Run NSE Downloader
+          python -m pip install --upgrade pip
+          pip install pandas requests beautifulsoup4 lxml
+
+      - name: Run NSE data downloader script
         run: |
-          python nse_downloader_action.py
-      
-      - name: Commit and push parquet file
+          python nse_data_downloader.py
+
+      - name: Commit and push updated data
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          
-          # Check if parquet file exists
-          if ls nse_data_*.parquet 1> /dev/null 2>&1; then
-            git add nse_data_*.parquet
-            
-            # Only commit if there are changes
-            if git diff --staged --quiet; then
-              echo "No changes to commit"
-            else
-              git commit -m "Update NSE data - $(date +'%Y-%m-%d %H:%M:%S')"
-              git push
-            fi
-          else
-            echo "No parquet file found to commit"
-            exit 1
-          fi
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Auto update data on schedule [skip ci]" || echo "No changes to commit"
+          git push
