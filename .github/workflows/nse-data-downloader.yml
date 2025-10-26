@@ -1,48 +1,55 @@
-name: Update Parquet Data
+name: NSE Data Downloader
 
 on:
-  workflow_dispatch:     # manual run karne ke liye
   schedule:
-    - cron: "0 6 * * *"  # optional - daily 6 AM UTC par chale (chahe to hata do)
+    # Runs every Sunday at 1:00 PM IST (7:30 AM UTC)
+    # IST = UTC + 5:30, so 13:00 IST = 07:30 UTC
+    - cron: '30 7 * * 0'
+  workflow_dispatch: # Allows manual trigger
+
+permissions:
+  contents: write  # Important: Allows pushing to repo
 
 jobs:
-  update-data:
+  download-and-save:
     runs-on: ubuntu-latest
-
+    
     steps:
-      # 1️⃣ Repo clone karo
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
-
-      # 2️⃣ Python setup karo (agar script python se data banata hai)
-      - name: Setup Python
+      
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      # 3️⃣ Dependencies install karo (agar zarurat ho)
+          python-version: '3.11'
+          cache: 'pip'
+      
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt || echo "no requirements.txt found"
-
-      # 4️⃣ Run your data generation script
-      - name: Run data update script
+          pip install -r requirements.txt
+      
+      - name: Run NSE Downloader
         run: |
-          python your_script.py
-          # 👆 ye script new .parquet file same naam se save kare repo me
-          # example: data/AllNifty/data.parquet
-
-      # 5️⃣ Git me check karo aur commit/push karo
-      - name: Commit and push changes
+          python nse_downloader_action.py
+      
+      - name: Commit and push parquet file
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
+          # Check if parquet file exists
+          if ls nse_data_*.parquet 1> /dev/null 2>&1; then
+            git add nse_data_*.parquet
+            
+            # Only commit if there are changes
+            if git diff --cached --quiet; then
+              echo "No changes to commit"
+            else
+              DATE=$(date -u +"%Y-%m-%d %H:%M:%S")
+              git commit -m "NSE data updated on $DATE UTC"
+              git push
+            fi
           else
-            DATE=$(date +'%Y-%m-%d')
-            git commit -m "All Nifty data updated on $DATE"
-            git push origin main
+            echo "No parquet file found to commit"
+            exit 1
           fi
