@@ -40,12 +40,17 @@ jobs:
 
           # Check if parquet file exists
           if ls nse_data_*.parquet 1> /dev/null 2>&1; then
-            echo "Parquet file(s) found, preparing to push to NIFTY repo..."
+            echo "✅ Parquet file(s) found, preparing to push to NIFTY repo..."
 
             # Clone the private repo using token
             git clone https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
 
-            # Copy parquet files to that repo
+            cd NIFTY
+            echo "🧹 Removing old parquet files..."
+            rm -f nse_data_*.parquet || true
+            cd ..
+
+            echo "📦 Copying new parquet file(s)..."
             cp nse_data_*.parquet NIFTY/
 
             cd NIFTY
@@ -59,7 +64,7 @@ jobs:
               FILE_COUNT=$(ls nse_data_*.parquet | wc -l)
               git commit -m "✅ NSE data updated on $DATE UTC ($FILE_COUNT file(s))"
               git push origin main
-              echo "Data successfully pushed to NIFTY repo."
+              echo "🚀 Data successfully pushed to NIFTY repo."
             fi
           else
             echo "❌ No parquet file found to commit"
