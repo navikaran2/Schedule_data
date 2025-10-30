@@ -67,7 +67,7 @@ jobs:
               # Get IST time for commit message
               DATE_IST=$(TZ='Asia/Kolkata' date '+%Y-%m-%d %I:%M:%S %p IST')
               FILE_COUNT=$(ls nse_data_*.parquet | wc -l)
-              git commit -m "✅ NSE data updated on ${DATE_IST} (${FILE_COUNT} file(s))"
+              git commit -m "✅ NSE data updated on ${DATE_IST}"
               git push origin main
               echo "🚀 Data successfully pushed to NIFTY repo."
             fi
