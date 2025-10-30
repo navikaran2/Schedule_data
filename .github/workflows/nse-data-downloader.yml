@@ -123,6 +123,7 @@ jobs:
       
       - name: 💾 Commit and push to NIFTY repo
         if: steps.check_files.outputs.file_found == 'true'
+        id: commit_step
         run: |
           cd NIFTY
           
@@ -140,11 +141,11 @@ jobs:
           if git diff --cached --quiet; then
             echo "ℹ️ File content identical, forcing update with empty commit..."
             git commit --allow-empty -m "✅ NSE data force updated on ${DATE_IST}" -m "📊 File size: ${FILE_SIZE}" -m "🔄 Forced update (content unchanged)" -m "🤖 Automated update via GitHub Actions"
-            echo "commit_made=forced" >> $GITHUB_ENV
+            echo "commit_type=forced" >> $GITHUB_OUTPUT
           else
             echo "💾 Creating commit with new data..."
             git commit -m "✅ NSE data updated on ${DATE_IST}" -m "📊 File size: ${FILE_SIZE}" -m "🤖 Automated update via GitHub Actions"
-            echo "commit_made=true" >> $GITHUB_ENV
+            echo "commit_type=new" >> $GITHUB_OUTPUT
           fi
           
           echo "🚀 Pushing to remote..."
@@ -163,12 +164,12 @@ jobs:
             echo "📁 **File**: \`${{ steps.check_files.outputs.parquet_file }}\`" >> $GITHUB_STEP_SUMMARY
             echo "📊 **Size**: ${{ steps.check_files.outputs.file_size }}" >> $GITHUB_STEP_SUMMARY
             
-            if [ "${{ env.commit_made }}" == "true" ]; then
+            if [ "${{ steps.commit_step.outputs.commit_type }}" == "new" ]; then
               echo "💾 **Commit**: New data pushed to NIFTY repo" >> $GITHUB_STEP_SUMMARY
-            elif [ "${{ env.commit_made }}" == "forced" ]; then
+            elif [ "${{ steps.commit_step.outputs.commit_type }}" == "forced" ]; then
               echo "🔄 **Commit**: Forced update (content unchanged)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "ℹ️ **Commit**: Skipped" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ **Commit**: Status unknown" >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "❌ **Status**: Failed - No parquet file generated" >> $GITHUB_STEP_SUMMARY
