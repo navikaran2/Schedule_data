@@ -159,8 +159,8 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
           
-          echo "➕ Staging new files..."
-          git add nse_data_*.parquet
+          echo "➕ Staging all changes (additions and deletions)..."
+          git add -A nse_data_*.parquet
           
           DATE_IST=$(TZ='Asia/Kolkata' date +"%Y-%m-%d %I:%M:%S %p IST")
           FILE_SIZE="${{ steps.check_files.outputs.file_size }}"
