@@ -2,8 +2,8 @@ name: NSE Data Downloader
 
 on:
   schedule:
-    # Runs every Sunday at 11:12 PM IST (5:42 PM UTC)
-    - cron: '42 17 * * 0'
+    # Runs every Friday at 9:00 PM IST (3:30 PM UTC)
+    - cron: '30 15 * * 5'
   workflow_dispatch: # Allows manual trigger
 
 permissions:
