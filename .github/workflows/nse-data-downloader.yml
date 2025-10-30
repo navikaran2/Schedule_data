@@ -17,6 +17,71 @@ jobs:
       - name: 🧾 Checkout repository
         uses: actions/checkout@v4
       
+      - name: 🔐 Validate GitHub Token
+        env:
+          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
+        run: |
+          echo "🔐 Testing GitHub token..."
+          if curl -s -H "Authorization: token ${NIFTY_TOKEN}" \
+               https://api.github.com/repos/navikaran2/NIFTY | grep -q '"private": true'; then
+            echo "✅ Token validated - can access private repo"
+          else
+            echo "❌ Token invalid or insufficient permissions"
+            exit 1
+          fi
+      
+      - name: 📝 Configure Git credentials
+        env:
+          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      
+      - name: 🔥 Clone NIFTY repository
+        env:
+          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
+        run: |
+          echo "📄 Cloning NIFTY repository..."
+          git clone https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
+          cd NIFTY
+          echo "📂 Current directory contents:"
+          ls -lh
+      
+      - name: 🗑️ Delete old parquet files from NIFTY repo
+        env:
+          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
+        run: |
+          cd NIFTY
+          
+          echo "🔍 Checking for old parquet files..."
+          OLD_FILES=$(find . -maxdepth 1 -name "nse_data_*.parquet" -type f)
+          
+          if [ -n "$OLD_FILES" ]; then
+            echo "🗑️ Found old parquet files - deleting:"
+            echo "$OLD_FILES"
+            rm -f nse_data_*.parquet
+            
+            echo "➕ Staging deletions..."
+            git add -A .
+            
+            # Check if there are changes to commit
+            if ! git diff --cached --quiet; then
+              DATE_IST=$(TZ='Asia/Kolkata' date +"%Y-%m-%d %I:%M:%S %p IST")
+              echo "💾 Committing deletions..."
+              git commit -m "🗑️ Cleaned old NSE parquet files on ${DATE_IST}" -m "🤖 Automated cleanup via GitHub Actions"
+              
+              echo "🚀 Pushing deletion to remote..."
+              git remote set-url origin https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
+              git push origin main
+              
+              echo "✅ Old files deleted and pushed successfully!"
+            else
+              echo "ℹ️ No files to delete"
+            fi
+          else
+            echo "✅ No old parquet files found - starting fresh"
+          fi
+      
       - name: ⚙️ Set up Python
         uses: actions/setup-python@v5
         with:
@@ -73,78 +138,16 @@ jobs:
               sys.exit(1)
           "
       
-      - name: 🔐 Validate GitHub Token
-        if: steps.check_files.outputs.file_found == 'true'
-        env:
-          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
-        run: |
-          echo "🔐 Testing GitHub token..."
-          if curl -s -H "Authorization: token ${NIFTY_TOKEN}" \
-               https://api.github.com/repos/navikaran2/NIFTY | grep -q '"private": true'; then
-            echo "✅ Token validated - can access private repo"
-          else
-            echo "❌ Token invalid or insufficient permissions"
-            exit 1
-          fi
-      
-      - name: 📝 Configure Git credentials
-        if: steps.check_files.outputs.file_found == 'true'
-        env:
-          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
-        run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-          git config --global credential.helper store
-          echo "https://x-access-token:${NIFTY_TOKEN}@github.com" > ~/.git-credentials
-      
-      - name: 🔥 Clone NIFTY repository
-        if: steps.check_files.outputs.file_found == 'true'
-        env:
-          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
-        run: |
-          echo "📄 Cloning NIFTY repository..."
-          git clone https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
-          cd NIFTY
-          echo "📂 Current directory contents:"
-          ls -lh
-      
-      - name: 🧹 Clean old parquet files
+      - name: 📦 Copy new parquet file to NIFTY repo
         if: steps.check_files.outputs.file_found == 'true'
         run: |
-          cd NIFTY
-          echo "🧹 Removing old parquet files..."
-          OLD_FILES=$(find . -maxdepth 1 -name "nse_data_*.parquet" -type f)
-          
-          if [ -n "$OLD_FILES" ]; then
-            echo "🗑️ Deleting old files:"
-            echo "$OLD_FILES"
-            rm -f nse_data_*.parquet
-          else
-            echo "✅ No old parquet files found"
-          fi
-          
-          echo "📜 Verifying cleanup:"
-          find . -maxdepth 1 -name "nse_data_*.parquet" -type f || echo "✅ Cleanup successful"
-      
-      - name: 📦 Copy new parquet file
-        if: steps.check_files.outputs.file_found == 'true'
-        run: |
-          echo "📦 Copying new parquet file(s) to NIFTY repo..."
+          echo "📦 Copying new parquet file to NIFTY repo..."
           cp nse_data_*.parquet NIFTY/
           cd NIFTY
           echo "✅ Files after copy:"
           ls -lh nse_data_*.parquet
-          
-          echo ""
-          echo "🗑️ Removing old parquet files except the latest..."
-          LATEST_FILE=$(ls -t nse_data_*.parquet 2>/dev/null | head -1)
-          if [ -n "$LATEST_FILE" ]; then
-            echo "📌 Keeping: $LATEST_FILE"
-            find . -maxdepth 1 -name "nse_data_*.parquet" -type f ! -name "$LATEST_FILE" -delete
-            echo "✅ Cleanup complete"
-          fi
       
-      - name: 💾 Commit and push to NIFTY repo
+      - name: 💾 Commit and push new data to NIFTY repo
         if: steps.check_files.outputs.file_found == 'true'
         id: commit_step
         env:
@@ -152,15 +155,15 @@ jobs:
         run: |
           cd NIFTY
           
-          # Set remote URL with token for extra safety
+          # Set remote URL with token
           git remote set-url origin https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
           
           echo "📄 Syncing with remote..."
           git fetch origin main
-          git reset --hard origin/main
+          git pull origin main
           
-          echo "➕ Staging all changes (additions and deletions)..."
-          git add -A nse_data_*.parquet
+          echo "➕ Staging new parquet file..."
+          git add nse_data_*.parquet
           
           DATE_IST=$(TZ='Asia/Kolkata' date +"%Y-%m-%d %I:%M:%S %p IST")
           FILE_SIZE="${{ steps.check_files.outputs.file_size }}"
