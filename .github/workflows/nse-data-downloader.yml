@@ -133,23 +133,24 @@ jobs:
           echo "➕ Staging new files..."
           git add nse_data_*.parquet
           
+          DATE_IST=$(TZ='Asia/Kolkata' date +"%Y-%m-%d %I:%M:%S %p IST")
+          FILE_SIZE="${{ steps.check_files.outputs.file_size }}"
+          
           # Check for changes
           if git diff --cached --quiet; then
-            echo "ℹ️ No new data to commit (files are identical)"
-            echo "commit_made=false" >> $GITHUB_ENV
+            echo "ℹ️ File content identical, forcing update with empty commit..."
+            git commit --allow-empty -m "✅ NSE data force updated on ${DATE_IST}" -m "📊 File size: ${FILE_SIZE}" -m "🔄 Forced update (content unchanged)" -m "🤖 Automated update via GitHub Actions"
+            echo "commit_made=forced" >> $GITHUB_ENV
           else
-            DATE_IST=$(TZ='Asia/Kolkata' date +"%Y-%m-%d %I:%M:%S %p IST")
-            FILE_SIZE="${{ steps.check_files.outputs.file_size }}"
-            
-            echo "💾 Creating commit..."
+            echo "💾 Creating commit with new data..."
             git commit -m "✅ NSE data updated on ${DATE_IST}" -m "📊 File size: ${FILE_SIZE}" -m "🤖 Automated update via GitHub Actions"
-            
-            echo "🚀 Pushing to remote..."
-            git push origin main
-            
-            echo "✨ Data successfully pushed to NIFTY repo!"
             echo "commit_made=true" >> $GITHUB_ENV
           fi
+          
+          echo "🚀 Pushing to remote..."
+          git push origin main
+          
+          echo "✨ Data successfully pushed to NIFTY repo!"
       
       - name: 📊 Generate summary
         if: always()
@@ -163,9 +164,11 @@ jobs:
             echo "📊 **Size**: ${{ steps.check_files.outputs.file_size }}" >> $GITHUB_STEP_SUMMARY
             
             if [ "${{ env.commit_made }}" == "true" ]; then
-              echo "💾 **Commit**: Created and pushed to NIFTY repo" >> $GITHUB_STEP_SUMMARY
+              echo "💾 **Commit**: New data pushed to NIFTY repo" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ env.commit_made }}" == "forced" ]; then
+              echo "🔄 **Commit**: Forced update (content unchanged)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "ℹ️ **Commit**: No changes detected" >> $GITHUB_STEP_SUMMARY
+              echo "ℹ️ **Commit**: Skipped" >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "❌ **Status**: Failed - No parquet file generated" >> $GITHUB_STEP_SUMMARY
