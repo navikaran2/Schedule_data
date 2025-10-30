@@ -60,9 +60,9 @@ jobs:
             if git diff --cached --quiet; then
               echo "No new data to commit"
             else
-              DATE=$(date -u +"%Y-%m-%d %H:%M:%S")
+              DATE=$(TZ='Asia/Kolkata' date +"%Y-%m-%d %I:%M:%S %p")
               FILE_COUNT=$(ls nse_data_*.parquet | wc -l)
-              git commit -m "✅ NSE data updated on $DATE UTC ($FILE_COUNT file(s))"
+              git commit -m "✅ NSE data updated on $DATE IST ($FILE_COUNT file(s))"
               git push origin main
               echo "🚀 Data successfully pushed to NIFTY repo."
             fi
