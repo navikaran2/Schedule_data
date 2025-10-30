@@ -3,12 +3,11 @@ name: NSE Data Downloader
 on:
   schedule:
     # Runs every Sunday at 11:12 PM IST (5:42 PM UTC)
-    # IST = UTC + 5:30, so 23:12 IST = 17:42 UTC
     - cron: '42 17 * * 0'
   workflow_dispatch: # Allows manual trigger
 
 permissions:
-  contents: write  # Important: Allows pushing to repo
+  contents: write
 
 jobs:
   download-and-save:
@@ -32,24 +31,37 @@ jobs:
         run: |
           python nse_downloader_action.py
       
-      - name: Commit and push parquet file
+      - name: Commit and push parquet file to NIFTY repo
+        env:
+          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
           # Check if parquet file exists
           if ls nse_data_*.parquet 1> /dev/null 2>&1; then
+            echo "Parquet file(s) found, preparing to push to NIFTY repo..."
+
+            # Clone the private repo using token
+            git clone https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
+
+            # Copy parquet files to that repo
+            cp nse_data_*.parquet NIFTY/
+
+            cd NIFTY
             git add nse_data_*.parquet
-            
+
             # Only commit if there are changes
             if git diff --cached --quiet; then
-              echo "No changes to commit"
+              echo "No new data to commit"
             else
               DATE=$(date -u +"%Y-%m-%d %H:%M:%S")
-              git commit -m "NSE data updated on $DATE UTC"
-              git push
+              FILE_COUNT=$(ls nse_data_*.parquet | wc -l)
+              git commit -m "✅ NSE data updated on $DATE UTC ($FILE_COUNT file(s))"
+              git push origin main
+              echo "Data successfully pushed to NIFTY repo."
             fi
           else
-            echo "No parquet file found to commit"
+            echo "❌ No parquet file found to commit"
             exit 1
           fi
