@@ -35,7 +35,7 @@ jobs:
           retry_wait_seconds: 30
           command: python nse_downloader_action.py
       
-      - name: 🔍 Check for parquet files
+      - name: 📁 Check for parquet files
         id: check_files
         run: |
           PARQUET_FILE=$(find . -maxdepth 1 -name "nse_data_*.parquet" -type f | head -1)
@@ -73,9 +73,21 @@ jobs:
               sys.exit(1)
           "
       
-
+      - name: 🔐 Validate GitHub Token
+        if: steps.check_files.outputs.file_found == 'true'
+        env:
+          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
+        run: |
+          echo "🔐 Testing GitHub token..."
+          if curl -s -H "Authorization: token ${NIFTY_TOKEN}" \
+               https://api.github.com/repos/navikaran2/NIFTY | grep -q '"private": true'; then
+            echo "✅ Token validated - can access private repo"
+          else
+            echo "❌ Token invalid or insufficient permissions"
+            exit 1
+          fi
       
-      - name: 🔐 Configure Git credentials
+      - name: 📝 Configure Git credentials
         if: steps.check_files.outputs.file_found == 'true'
         env:
           NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
@@ -85,11 +97,13 @@ jobs:
           git config --global credential.helper store
           echo "https://x-access-token:${NIFTY_TOKEN}@github.com" > ~/.git-credentials
       
-      - name: 📥 Clone NIFTY repository
+      - name: 🔥 Clone NIFTY repository
         if: steps.check_files.outputs.file_found == 'true'
+        env:
+          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
         run: |
-          echo "🔄 Cloning NIFTY repository..."
-          git clone https://github.com/navikaran2/NIFTY.git
+          echo "📄 Cloning NIFTY repository..."
+          git clone https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
           cd NIFTY
           echo "📂 Current directory contents:"
           ls -lh
@@ -124,10 +138,15 @@ jobs:
       - name: 💾 Commit and push to NIFTY repo
         if: steps.check_files.outputs.file_found == 'true'
         id: commit_step
+        env:
+          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
         run: |
           cd NIFTY
           
-          echo "🔄 Syncing with remote..."
+          # Set remote URL with token for extra safety
+          git remote set-url origin https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
+          
+          echo "📄 Syncing with remote..."
           git fetch origin main
           git reset --hard origin/main
           
@@ -184,7 +203,7 @@ jobs:
           rm -f ~/.git-credentials
           echo "✅ Credentials cleaned up"
       
-      - name: 📧 Notify on failure
+      - name: 🔧 Notify on failure
         if: failure()
         run: |
           echo "::error::❌ NSE data download/upload workflow failed!"
