@@ -4,7 +4,7 @@ on:
   schedule:
     # Every Friday at 9:00 PM IST (3:30 PM UTC)
     - cron: '30 15 * * 5'
-  workflow_dispatch: # Manual trigger bhi chalega
+  workflow_dispatch: # Manual trigger
 
 permissions:
   contents: write
@@ -12,65 +12,177 @@ permissions:
 jobs:
   download-and-save:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: 🧾 Checkout repository
         uses: actions/checkout@v4
-
+      
       - name: ⚙️ Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-
+      
       - name: 📦 Install dependencies
         run: |
           pip install -r requirements.txt
-
-      - name: 🚀 Run NSE Downloader
+      
+      - name: 🚀 Run NSE Downloader (with retry)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: python nse_downloader_action.py
+      
+      - name: 🔍 Check for parquet files
+        id: check_files
         run: |
-          python nse_downloader_action.py
+          PARQUET_FILE=$(find . -maxdepth 1 -name "nse_data_*.parquet" -type f | head -1)
+          
+          if [ -z "$PARQUET_FILE" ]; then
+            echo "❌ No parquet file found"
+            echo "file_found=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ Found: $PARQUET_FILE"
+          FILE_SIZE=$(du -h "$PARQUET_FILE" | cut -f1)
+          echo "📊 File size: $FILE_SIZE"
+          echo "file_found=true" >> $GITHUB_OUTPUT
+          echo "parquet_file=$PARQUET_FILE" >> $GITHUB_OUTPUT
+          echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
+      
+      - name: ✅ Validate parquet file
+        if: steps.check_files.outputs.file_found == 'true'
+        run: |
+          python -c "
+          import pandas as pd
+          import sys
+          try:
+              df = pd.read_parquet('${{ steps.check_files.outputs.parquet_file }}')
+              rows = len(df)
+              cols = len(df.columns)
+              print(f'✅ Validation passed: {rows} rows, {cols} columns')
+              print(f'📋 Columns: {list(df.columns)}')
+              if rows == 0:
+                  print('❌ Warning: Parquet file is empty!')
+                  sys.exit(1)
+          except Exception as e:
+              print(f'❌ Validation failed: {e}')
+              sys.exit(1)
+          "
+      
 
-      - name: 💾 Commit and push parquet file to NIFTY repo
+      
+      - name: 🔐 Configure Git credentials
+        if: steps.check_files.outputs.file_found == 'true'
         env:
           NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-
-          # Check if parquet file exists
-          if ls nse_data_*.parquet 1> /dev/null 2>&1; then
-            echo "✅ New parquet file(s) found, preparing to push to NIFTY repo..."
-
-            # Clone private NIFTY repo
-            git clone https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
-
-            echo "🧹 Removing old parquet files in NIFTY repo..."
-            rm -f NIFTY/nse_data_*.parquet || true
-
-            echo "📜 Verifying parquet files after cleanup:"
-            ls NIFTY | grep parquet || echo "✅ No old parquet files left."
-
-            echo "📦 Copying new parquet file(s)..."
-            cp nse_data_*.parquet NIFTY/
-
-            cd NIFTY
-
-            echo "🔄 Syncing with latest commits..."
-            git pull --rebase origin main || true
-
-            git add nse_data_*.parquet
-
-            # Check for changes
-            if git diff --cached --quiet; then
-              echo "ℹ️ No new data to commit."
+          git config --global credential.helper store
+          echo "https://x-access-token:${NIFTY_TOKEN}@github.com" > ~/.git-credentials
+      
+      - name: 📥 Clone NIFTY repository
+        if: steps.check_files.outputs.file_found == 'true'
+        run: |
+          echo "🔄 Cloning NIFTY repository..."
+          git clone https://github.com/navikaran2/NIFTY.git
+          cd NIFTY
+          echo "📂 Current directory contents:"
+          ls -lh
+      
+      - name: 🧹 Clean old parquet files
+        if: steps.check_files.outputs.file_found == 'true'
+        run: |
+          cd NIFTY
+          echo "🧹 Removing old parquet files..."
+          OLD_FILES=$(find . -maxdepth 1 -name "nse_data_*.parquet" -type f)
+          
+          if [ -n "$OLD_FILES" ]; then
+            echo "🗑️ Deleting old files:"
+            echo "$OLD_FILES"
+            rm -f nse_data_*.parquet
+          else
+            echo "✅ No old parquet files found"
+          fi
+          
+          echo "📜 Verifying cleanup:"
+          find . -maxdepth 1 -name "nse_data_*.parquet" -type f || echo "✅ Cleanup successful"
+      
+      - name: 📦 Copy new parquet file
+        if: steps.check_files.outputs.file_found == 'true'
+        run: |
+          echo "📦 Copying new parquet file(s) to NIFTY repo..."
+          cp nse_data_*.parquet NIFTY/
+          cd NIFTY
+          echo "✅ Files after copy:"
+          ls -lh nse_data_*.parquet
+      
+      - name: 💾 Commit and push to NIFTY repo
+        if: steps.check_files.outputs.file_found == 'true'
+        run: |
+          cd NIFTY
+          
+          echo "🔄 Syncing with remote..."
+          git fetch origin main
+          git reset --hard origin/main
+          
+          echo "➕ Staging new files..."
+          git add nse_data_*.parquet
+          
+          # Check for changes
+          if git diff --cached --quiet; then
+            echo "ℹ️ No new data to commit (files are identical)"
+            echo "commit_made=false" >> $GITHUB_ENV
+          else
+            DATE_IST=$(TZ='Asia/Kolkata' date +"%Y-%m-%d %I:%M:%S %p IST")
+            FILE_SIZE="${{ steps.check_files.outputs.file_size }}"
+            
+            echo "💾 Creating commit..."
+            git commit -m "✅ NSE data updated on ${DATE_IST}" -m "📊 File size: ${FILE_SIZE}" -m "🤖 Automated update via GitHub Actions"
+            
+            echo "🚀 Pushing to remote..."
+            git push origin main
+            
+            echo "✨ Data successfully pushed to NIFTY repo!"
+            echo "commit_made=true" >> $GITHUB_ENV
+          fi
+      
+      - name: 📊 Generate summary
+        if: always()
+        run: |
+          echo "## 📈 NSE Data Downloader Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.check_files.outputs.file_found }}" == "true" ]; then
+            echo "✅ **Status**: Success" >> $GITHUB_STEP_SUMMARY
+            echo "📁 **File**: \`${{ steps.check_files.outputs.parquet_file }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "📊 **Size**: ${{ steps.check_files.outputs.file_size }}" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ env.commit_made }}" == "true" ]; then
+              echo "💾 **Commit**: Created and pushed to NIFTY repo" >> $GITHUB_STEP_SUMMARY
             else
-              DATE_IST=$(TZ='Asia/Kolkata' date +"%Y-%m-%d %I:%M:%S %p IST")
-              git commit -m "✅ NSE data updated on ${DATE_IST}"
-              git push origin main
-              echo "🚀 Data successfully pushed to NIFTY repo."
+              echo "ℹ️ **Commit**: No changes detected" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo "❌ No parquet file found to commit"
-            exit 1
+            echo "❌ **Status**: Failed - No parquet file generated" >> $GITHUB_STEP_SUMMARY
           fi
+          
+          DATE_IST=$(TZ='Asia/Kolkata' date +"%Y-%m-%d %I:%M:%S %p IST")
+          echo "🕒 **Completed**: ${DATE_IST}" >> $GITHUB_STEP_SUMMARY
+      
+      - name: 🧹 Cleanup credentials
+        if: always()
+        run: |
+          rm -f ~/.git-credentials
+          echo "✅ Credentials cleaned up"
+      
+      - name: 📧 Notify on failure
+        if: failure()
+        run: |
+          echo "::error::❌ NSE data download/upload workflow failed!"
+          echo "::error::Please check the logs for details"
+          exit 1
