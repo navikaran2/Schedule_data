@@ -4,61 +4,72 @@ on:
   schedule:
     # Runs every Friday at 9:00 PM IST (3:30 PM UTC)
     - cron: '30 15 * * 5'
-  workflow_dispatch:  # Manual trigger allowed
+  workflow_dispatch:  # Manual trigger (for testing)
 
 permissions:
-  contents: write  # Git push ke liye zaruri
+  contents: write
 
 jobs:
   download-and-save:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
+      - name: 🧩 Checkout this repo
         uses: actions/checkout@v4
-      
-      - name: Set up Python
+
+      - name: ⚙️ Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-      
-      - name: Install dependencies
+
+      - name: 📦 Install dependencies
         run: |
           pip install -r requirements.txt
-      
-      - name: Remove old parquet files
-        run: |
-          echo "🧹 Deleting old parquet files..."
-          rm -f nse_data_*.parquet || true
 
-      - name: Run NSE Downloader
+      - name: 🚀 Run NSE Downloader Script
         run: |
-          echo "🚀 Running NSE Downloader..."
           python nse_downloader_action.py
-      
-      - name: Commit and push parquet file
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
 
-          # Pull latest changes before committing (safe rebase)
-          git pull --rebase origin main || true
-          
-          # Check for new parquet files
+      - name: 🔄 Commit and push parquet file to NIFTY repo
+        env:
+          NIFTY_TOKEN: ${{ secrets.NIFTY_TOKEN }}
+        run: |
+          set -e
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          # Check if new parquet file exists
           if ls nse_data_*.parquet 1> /dev/null 2>&1; then
+            echo "✅ Parquet file(s) found. Syncing with NIFTY repo..."
+
+            # Clone the private NIFTY repo using token
+            git clone https://x-access-token:${NIFTY_TOKEN}@github.com/navikaran2/NIFTY.git
+
+            cd NIFTY
+            echo "🔁 Pulling latest commits with rebase..."
+            git pull --rebase origin main || true
+
+            echo "🧹 Removing old parquet files..."
+            rm -f nse_data_*.parquet || true
+            cd ..
+
+            echo "📂 Copying new parquet file(s)..."
+            cp nse_data_*.parquet NIFTY/
+
+            cd NIFTY
             git add nse_data_*.parquet
-            
-            # Commit with Indian time
-            DATE=$(TZ="Asia/Kolkata" date +"%Y-%m-%d %I:%M:%S %p IST")
-            git commit -m "✅ NSE data updated on $DATE (latest file)" || echo "No changes to commit"
-            
-            # Push only if commit exists
-            if git log -1 --pretty=%B | grep "✅ NSE data updated"; then
-              git push
-              echo "✅ File pushed successfully."
+
+            # Check if there are any changes
+            if git diff --cached --quiet; then
+              echo "ℹ️ No new data to commit."
             else
-              echo "⚠️ Nothing new to push."
+              # Get IST time for commit message
+              DATE_IST=$(TZ='Asia/Kolkata' date '+%Y-%m-%d %I:%M:%S %p IST')
+              FILE_COUNT=$(ls nse_data_*.parquet | wc -l)
+              git commit -m "✅ NSE data updated on ${DATE_IST} (${FILE_COUNT} file(s))"
+              git push origin main
+              echo "🚀 Data successfully pushed to NIFTY repo."
             fi
           else
             echo "❌ No parquet file found to commit."
