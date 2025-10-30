@@ -134,6 +134,15 @@ jobs:
           cd NIFTY
           echo "✅ Files after copy:"
           ls -lh nse_data_*.parquet
+          
+          echo ""
+          echo "🗑️ Removing old parquet files except the latest..."
+          LATEST_FILE=$(ls -t nse_data_*.parquet 2>/dev/null | head -1)
+          if [ -n "$LATEST_FILE" ]; then
+            echo "📌 Keeping: $LATEST_FILE"
+            find . -maxdepth 1 -name "nse_data_*.parquet" -type f ! -name "$LATEST_FILE" -delete
+            echo "✅ Cleanup complete"
+          fi
       
       - name: 💾 Commit and push to NIFTY repo
         if: steps.check_files.outputs.file_found == 'true'
